@@ -8,7 +8,7 @@ from .constants import Path
 
 
 def make_request(url=None, method=None, params=None, request_payload=None, session=None, timeout=None, **kwargs):
-    global data_container
+    global data_placeholder
     # fmt: off - Turns off formatting for this block of code. Just for the readability purpose.
     def make_regular_request(request_payload):
         return validate_response(session.request(**request_payload))
@@ -32,7 +32,6 @@ def make_request(url=None, method=None, params=None, request_payload=None, sessi
             tasks_list = [asyncio.create_task(make_async_request({"params":query} | request_payload)) for query in query_params]
         return await asyncio.gather(*tasks_list, return_exceptions=True)
 
-    data_container = []
     method = method or "GET"
     timeout = timeout or config.TIMEOUT or 10
     proxies = config.PROXY or None
@@ -49,10 +48,10 @@ def make_request(url=None, method=None, params=None, request_payload=None, sessi
                 return asyncio.run(make_concurrent_requests(request_payload))
             except KeyboardInterrupt:
                 print("Interuppted..")
-                return data_container
+                return data_placeholder
             except Exception as error:
                 print(error)
-                return data_container
+                return data_placeholder
     else:
         request_payload = {"method":method,"url":url,"params":params} | kwargs
     return make_regular_request(request_payload)
@@ -93,7 +92,7 @@ def generate_request_data(endpoint, placeholder=None, params=None, additional_pa
 
 
 async def _handle_pagination(url=None, request_payload=None, session=None, end_cursor=None, **kwargs):
-    global data_container
+    global data_placeholder
         # fmt: off  - Turns off formatting for this block of code. Just for the readability purpose.
     data_placeholder = {"data": [],"cursor_endpoint": None, "has_next_page": True}
     request_payload = request_payload or {"url": url} | kwargs
@@ -108,7 +107,7 @@ async def _handle_pagination(url=None, request_payload=None, session=None, end_c
             response = await session.request(**request_payload)
             response = validate_response(response)
             end_cursor = util.find_nested_key(response,"next_max_id") or util.find_nested_key(response,"paging_tokens")
-            end_cursor = end_cursor[0] if isinstance(end_cursor[0],str) else end_cursor[0].get("downwards",None) if isinstance(end_cursor[0],dict) else None
+            end_cursor = end_cursor[0] if (end_cursor and isinstance(end_cursor[0],str)) else end_cursor[0].get("downwards",None) if (end_cursor and isinstance(end_cursor[0],dict)) else None
             more_threads =  util.find_nested_key(response,"downwards_thread_will_continue")
             more_threads = more_threads[0] if more_threads else True
             data_placeholder['data'].append(response)
@@ -119,7 +118,6 @@ async def _handle_pagination(url=None, request_payload=None, session=None, end_c
                 data_placeholder["has_next_page"] = False
 
             if not data_placeholder["has_next_page"] or not more_threads:
-                data_container.append(data_placeholder)
                 return data_placeholder
         # fmt: on 
         except ConnectionError as error:
@@ -128,7 +126,6 @@ async def _handle_pagination(url=None, request_payload=None, session=None, end_c
 
         except Exception as error:
             print(error)
-            data_container.append(data_placeholder)
             return data_placeholder
 
 
