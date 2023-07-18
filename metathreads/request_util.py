@@ -15,7 +15,6 @@ def make_request(url=None, method=None, params=None, request_payload=None, sessi
         return validate_response(session.request(**request_payload))
 
     async def make_async_request(request_payload):
-        print(request_payload)
         pagination_data = request_payload.pop("pagination_data",None)
         if not pagination_data:
             response = await session.request(**request_payload)
