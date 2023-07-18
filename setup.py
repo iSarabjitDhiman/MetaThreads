@@ -1,6 +1,6 @@
 from setuptools import setup
 
-VERSION = "0.0.3"
+VERSION = "0.0.4"
 SHORT_DESCRIPTION = "MetaThreads is Meta Threads-API to interact with Instagram threads app, extract data and perform actions. The library is written in python. MetaThreads API lets you fetch user's threads, thread replies, user's data, user's friends. Actions like posting a thread, like/unlike threads etc. can easily be perfomed with the api."
 
 with open("requirements.txt") as file:

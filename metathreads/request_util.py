@@ -25,12 +25,13 @@ def make_request(url=None, method=None, params=None, request_payload=None, sessi
         if isinstance(request_payload,list):
             tasks_list = [asyncio.create_task(make_async_request(payload)) for payload in request_payload]
         else:
-            query_params = request_payload.pop("params",None)
-            if not isinstance(query_params,list):
-                return await make_async_request({"params":query_params} | request_payload) 
-            if not query_params:
-                return await make_async_request(request_payload)  
-            tasks_list = [asyncio.create_task(make_async_request({"params":query} | request_payload)) for query in query_params]
+            multiple_payloads = request_payload.pop("multiple_payloads",None)
+            if not multiple_payloads:
+                return await make_async_request(request_payload)
+            payload_key, payload_data = multiple_payloads.popitem()
+            if not isinstance(payload_data,list):
+                return await make_async_request({payload_key:payload_data} | request_payload) 
+            tasks_list = [asyncio.create_task(make_async_request({payload_key:payload} | request_payload)) for payload in payload_data]
         return await asyncio.gather(*tasks_list, return_exceptions=True)
 
     data_container = {}
@@ -41,7 +42,7 @@ def make_request(url=None, method=None, params=None, request_payload=None, sessi
     concurrent_requests = False
     session = session or config._DEFAULT_SESSION or httpx.Client(follow_redirects=True, timeout=timeout, proxies=proxies, verify=ssl_verify)
     if request_payload:
-        concurrent_requests = True if isinstance(request_payload,list) or (isinstance(request_payload,dict) and isinstance(request_payload.get("params"),list) or request_payload.get("pagination_data")) else False
+        concurrent_requests = True if isinstance(request_payload,list) or (isinstance(request_payload,dict) and request_payload.get("multiple_payloads",None) or request_payload.get("pagination_data")) else False
         if concurrent_requests:
             connection_limits = httpx.Limits(max_connections=100, max_keepalive_connections=10, keepalive_expiry=5)
             headers,cookies = session.headers,session.cookies
@@ -56,40 +57,37 @@ def make_request(url=None, method=None, params=None, request_payload=None, sessi
                 return list(data_container.values())
     else:
         request_payload = {"method":method,"url":url,"params":params} | kwargs
+    request_payload.pop("multiple_payloads",None)
     return make_regular_request(request_payload)
 
 
-def generate_request_data(endpoint, placeholder=None, params=None, additional_payload=None, pagination=None, return_payload=False, **kwargs):
+def generate_request_data(endpoint, url_placeholder=None, additional_payload=None, pagination=None, return_payload=False, **kwargs):
         # fmt: off - Turns off formatting for this block of code. Just for the readability purpose.
-    method = kwargs.pop("method",None) or "GET"
-    params = params or {}
-    url = kwargs.pop("url",None) or Path.API_URL
-    url = util.generate_url(domain=url, url_path=endpoint)
-    params,data,json_data = params,kwargs.pop("data",None),kwargs.pop("json",None)
+    method = kwargs.pop("method","GET")
+    domain = kwargs.pop("url",Path.API_URL)
+    url = util.generate_url(domain=domain, url_path=endpoint)
+    multiple_payloads = None
     if additional_payload and isinstance(additional_payload,dict):
-        existing_payload = params or data or json_data
-        key,values = additional_payload.popitem()
-        values = values[0] if isinstance(values,list) and len(values) == 1 else values
-        if isinstance(values,list):
-            additional_payload = [existing_payload | {key:str(each_item)} if params else existing_payload | {key:str(each_item)} for each_item in values]
+        payload_type, additional_payload = additional_payload.popitem()
+        existing_payload = kwargs.pop(payload_type,{})
+        payload_key, payload_data = additional_payload.popitem()
+        payload_data = payload_data[0] if isinstance(payload_data,list) and len(payload_data) == 1 else payload_data
+        if isinstance(payload_data,list):
+            multiple_payloads = {payload_type : [existing_payload | {payload_key:str(payload)} for payload in payload_data]}
         else:
-            additional_payload = existing_payload | {key:str(values)} if params else existing_payload | {key:str(values)}
+            kwargs[payload_type] = existing_payload | {payload_key:str(payload_data)}
+
+    if url_placeholder and isinstance(url_placeholder,list):
+        request_payload = [{"method": method, "url": url.format(each_item)} | kwargs for each_item in url_placeholder]
     else:
-        additional_payload = json.dumps(params) if params else data or json_data if any([data,json_data]) else {}
-    data_key = "params" if params else "data" if data else "json" if json_data else None
-    additional_payload = {data_key:additional_payload} if data_key and additional_payload else {}
-    if placeholder and isinstance(placeholder,list):
-        request_payload = [{"method": method, "url": url.format(each_item)} | additional_payload | kwargs for each_item in placeholder]
-    else:
-        request_payload = {"method": method, "url": url.format(placeholder)} | additional_payload | kwargs
+        url = url.format(url_placeholder) if url_placeholder else url
+        request_payload = {"method": method, "url": url} | kwargs | {"multiple_payloads":multiple_payloads}
     # fmt: on   
-    if data and "data" not in request_payload.keys():
-        request_payload.update({"data": data})
-    if return_payload:
-        return request_payload
     if pagination:
         request_payload.update({"pagination_data": pagination}) if isinstance(request_payload, dict) else [
             item.update({"pagination_data": pagination}) for item in request_payload]
+    if return_payload:
+        return request_payload
     return make_request(request_payload=request_payload)
 
 
@@ -103,10 +101,9 @@ async def _handle_pagination(url=None, request_payload=None, session=None, end_c
     while data_placeholder["has_next_page"]:
         try:
             if end_cursor:
-                query_params = request_payload["params"] or json.dumps({cursor_key:""})
-                query_params = json.loads(query_params)
+                query_params = request_payload.get("params",{cursor_key:""})
                 query_params[cursor_key] = end_cursor
-                request_payload["params"] = json.dumps(query_params)
+                request_payload["params"] = query_params
             response = await session.request(**request_payload)
             response = validate_response(response)
             end_cursor = util.find_nested_key(response,"next_max_id") or util.find_nested_key(response,"paging_tokens")

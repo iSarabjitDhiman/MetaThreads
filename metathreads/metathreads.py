@@ -214,7 +214,7 @@ class MetaThreads:
         """
         params = {'search_surface': 'user_search_page',
                   'timezone_offset': 0, 'count': 100}
-        additional_payload = {'q': search_query}
+        additional_payload = {"params": {'q': search_query}}
         return generate_request_data(Path.SEARCH_USER_ENDPOINT, params=params, additional_payload=additional_payload)
 
     def get_notifications(self):
@@ -242,7 +242,7 @@ class MetaThreads:
             dict: Reposted thread data.
         """
         data = {"_uuid": Setting.DEVICE_ID}
-        additional_payload = {'media_id': thread_id}
+        additional_payload = {"data": {'media_id': thread_id}}
         return generate_request_data(Path.REPOST_THREAD, data=data, additional_payload=additional_payload, method="POST")
 
     @thread_id_decorator
@@ -256,7 +256,7 @@ class MetaThreads:
             dict: Destroyed thread data.
         """
         data = {'_uuid': Setting.DEVICE_ID}
-        additional_payload = {'original_media_id': thread_id}
+        additional_payload = {"data": {'original_media_id': thread_id}}
         return generate_request_data(Path.DELETE_REPOST, data=data, additional_payload=additional_payload, method="POST")
 
     def post_thread(self, thread_caption, reply_control="all"):
@@ -279,6 +279,7 @@ class MetaThreads:
         signed_data = {"signed_body": f"SIGNATURE.{json.dumps(data)}"}
         return generate_request_data(Path.POST_THREAD, data=signed_data, method="POST")
 
+    @thread_id_decorator
     def delete_thread(self, thread_id):
         """Delete/Destroy a thread posted by the user. Note : Doesn't work with a reposted thread. Check delete_repost for that case.
 
