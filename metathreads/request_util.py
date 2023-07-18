@@ -71,9 +71,9 @@ def generate_request_data(endpoint, placeholder=None, params=None, additional_pa
         key,values = additional_payload.popitem()
         values = values[0] if isinstance(values,list) and len(values) == 1 else values
         if isinstance(values,list):
-            additional_payload = [json.dumps(existing_payload | {key:str(each_item)}) if params else existing_payload | {key:str(each_item)} for each_item in values]
+            additional_payload = [existing_payload | {key:str(each_item)} if params else existing_payload | {key:str(each_item)} for each_item in values]
         else:
-            additional_payload = json.dumps(existing_payload | {key:str(values)}) if params else existing_payload | {key:str(values)}
+            additional_payload = existing_payload | {key:str(values)} if params else existing_payload | {key:str(values)}
     else:
         additional_payload = json.dumps(params) if params else data or json_data if any([data,json_data]) else {}
     data_key = "params" if params else "data" if data else "json" if json_data else None
