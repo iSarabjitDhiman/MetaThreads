@@ -2,18 +2,20 @@ import httpx
 import asyncio
 import bs4
 import json
+import hashlib
 from . import util
 from . import config
 from .constants import Path
 
 
 def make_request(url=None, method=None, params=None, request_payload=None, session=None, timeout=None, **kwargs):
-    global data_placeholder
+    global data_container
     # fmt: off - Turns off formatting for this block of code. Just for the readability purpose.
     def make_regular_request(request_payload):
         return validate_response(session.request(**request_payload))
 
     async def make_async_request(request_payload):
+        print(request_payload)
         pagination_data = request_payload.pop("pagination_data",None)
         if not pagination_data:
             response = await session.request(**request_payload)
@@ -32,6 +34,7 @@ def make_request(url=None, method=None, params=None, request_payload=None, sessi
             tasks_list = [asyncio.create_task(make_async_request({"params":query} | request_payload)) for query in query_params]
         return await asyncio.gather(*tasks_list, return_exceptions=True)
 
+    data_container = {}
     method = method or "GET"
     timeout = timeout or config.TIMEOUT or 10
     proxies = config.PROXY or None
@@ -48,10 +51,10 @@ def make_request(url=None, method=None, params=None, request_payload=None, sessi
                 return asyncio.run(make_concurrent_requests(request_payload))
             except KeyboardInterrupt:
                 print("Interuppted..")
-                return data_placeholder
+                return list(data_container.values())
             except Exception as error:
                 print(error)
-                return data_placeholder
+                return list(data_container.values())
     else:
         request_payload = {"method":method,"url":url,"params":params} | kwargs
     return make_regular_request(request_payload)
@@ -92,11 +95,12 @@ def generate_request_data(endpoint, placeholder=None, params=None, additional_pa
 
 
 async def _handle_pagination(url=None, request_payload=None, session=None, end_cursor=None, **kwargs):
-    global data_placeholder
         # fmt: off  - Turns off formatting for this block of code. Just for the readability purpose.
+    unique_key = hashlib.sha1(json.dumps(request_payload, sort_keys=True).encode()).hexdigest()
     data_placeholder = {"data": [],"cursor_endpoint": None, "has_next_page": True}
     request_payload = request_payload or {"url": url} | kwargs
-    cursor_key,end_cursor = end_cursor.popitem()
+    cursor_key = next(iter(end_cursor))
+    end_cursor = end_cursor[cursor_key]
     while data_placeholder["has_next_page"]:
         try:
             if end_cursor:
@@ -111,6 +115,7 @@ async def _handle_pagination(url=None, request_payload=None, session=None, end_c
             more_threads =  util.find_nested_key(response,"downwards_thread_will_continue")
             more_threads = more_threads[0] if more_threads else True
             data_placeholder['data'].append(response)
+            data_container[unique_key] = data_placeholder
             print(f"Page: {len(data_placeholder['data'])}", end="\r")
             if end_cursor:
                 data_placeholder['cursor_endpoint'] = end_cursor

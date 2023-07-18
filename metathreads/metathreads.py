@@ -106,8 +106,9 @@ class MetaThreads:
         Returns:
             dict: Thread replies dataset. i.e. people who replied to the thread and replied content.
         """
-        pagination_data = {"paging_token'": cursor, "count": 100}
-        return generate_request_data(Path.THREAD_ENDPOINT, thread_id, pagination=pagination_data)
+        params = {"count": 100}
+        pagination_data = {"paging_token'": cursor}
+        return generate_request_data(Path.THREAD_ENDPOINT, thread_id, params=params, pagination=pagination_data)
 
     @thread_id_decorator
     def get_thread_likes(self, thread_id):
